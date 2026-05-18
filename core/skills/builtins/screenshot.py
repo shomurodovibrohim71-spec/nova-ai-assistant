@@ -17,6 +17,18 @@ TELEGRAM_API = "https://api.telegram.org/bot{token}"
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
+def _hide_from_taskbar(hwnd: int) -> None:
+    """Remove a window from the taskbar so it never flashes for the user."""
+    import win32con
+    try:
+        ex = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+        # WS_EX_TOOLWINDOW hides from taskbar; remove WS_EX_APPWINDOW which forces it back
+        ex = (ex | win32con.WS_EX_TOOLWINDOW) & ~win32con.WS_EX_APPWINDOW
+        win32gui.SetWindowLong(hwnd, win32con.GWL_EXSTYLE, ex)
+    except Exception:
+        pass
+
+
 def _take_screenshot(monitor: int = 0) -> Path:
     import mss, mss.tools
     with mss.mss() as sct:
@@ -81,6 +93,7 @@ def _capture_folder_window(folder: Path) -> Path:
         if candidates:
             hwnd = candidates[-1]
             win32gui.ShowWindow(hwnd, 0)  # SW_HIDE — hide immediately
+            _hide_from_taskbar(hwnd)
             break
 
     if hwnd is None:
@@ -176,14 +189,21 @@ def _capture_excel_window(
                     ws = sh
                     break
 
-        # ── Show window first so outline/hidden ops take visual effect ───────
+        # ── Show window hidden behind everything — never visible to user ────
         hwnd = excel.Hwnd
+        _hide_from_taskbar(hwnd)
         win32gui.SetWindowPos(
             hwnd, win32con.HWND_BOTTOM,
             0, 0, WIN_W, WIN_H,
             win32con.SWP_NOACTIVATE,
         )
         excel.Visible = True
+        # Re-push to bottom immediately after COM makes it visible
+        win32gui.SetWindowPos(
+            hwnd, win32con.HWND_BOTTOM,
+            0, 0, WIN_W, WIN_H,
+            win32con.SWP_NOACTIVATE | win32con.SWP_NOMOVE | win32con.SWP_NOSIZE,
+        )
         time.sleep(0.2)
 
         # ── Expand all column groups + unhide every column (phone numbers) ───
@@ -293,6 +313,7 @@ def _capture_file_window(
             if hwnd is None:
                 hwnd = candidates[-1]
             win32gui.ShowWindow(hwnd, 0)  # SW_HIDE immediately
+            _hide_from_taskbar(hwnd)
             break
 
     if hwnd is None:
@@ -416,14 +437,21 @@ def _capture_excel_scrolled_pages(
                     ws = sh
                     break
 
-        # ── Position & show window FIRST so outline/hidden ops take effect ───
+        # ── Position & show window hidden behind everything ───────────────────
         hwnd = excel.Hwnd
+        _hide_from_taskbar(hwnd)
         win32gui.SetWindowPos(
             hwnd, win32con.HWND_BOTTOM,
             0, 0, WIN_W, WIN_H,
             win32con.SWP_NOACTIVATE,
         )
         excel.Visible = True
+        # Re-push to bottom immediately after COM makes it visible
+        win32gui.SetWindowPos(
+            hwnd, win32con.HWND_BOTTOM,
+            0, 0, WIN_W, WIN_H,
+            win32con.SWP_NOACTIVATE | win32con.SWP_NOMOVE | win32con.SWP_NOSIZE,
+        )
         excel.ActiveWindow.Zoom = 80
         try:
             excel.ActiveWindow.DisplayHeadings = False

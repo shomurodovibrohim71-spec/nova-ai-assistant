@@ -242,6 +242,7 @@ class OpenAppSkill(Skill):
             result = subprocess.run(
                 ["schtasks", "/run", "/tn", "NovaLauncher"],
                 capture_output=True, text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
             )
             if result.returncode != 0:
                 # NovaLauncher task not registered — fall back to direct ShellExecuteW
