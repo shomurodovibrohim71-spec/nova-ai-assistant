@@ -256,3 +256,164 @@ class OpenAppSkill(Skill):
                     raise OSError(f"ShellExecuteW failed with code {ret}: {executable}")
         else:
             subprocess.Popen([executable])
+
+
+# ── Process name aliases for taskkill ────────────────────────────────────────
+CLOSE_ALIASES: dict[str, str] = {
+    "chrome": "chrome.exe",
+    "firefox": "firefox.exe",
+    "edge": "msedge.exe",
+    "notepad": "notepad.exe",
+    "calculator": "win32calc.exe",
+    "calc": "win32calc.exe",
+    "excel": "EXCEL.EXE",
+    "word": "WINWORD.EXE",
+    "vscode": "Code.exe",
+    "code": "Code.exe",
+    "steam": "steam.exe",
+    "spotify": "Spotify.exe",
+    "discord": "Discord.exe",
+    "vlc": "vlc.exe",
+    "telegram": "Telegram.exe",
+    "explorer": "explorer.exe",
+    "powershell": "powershell.exe",
+}
+
+
+class CloseAppSkill(Skill):
+    name = "close_app"
+    description = "Close / kill a running application by name."
+    tool_description = "Kill a running process by app name (e.g. 'chrome', 'notepad', 'excel')."
+    patterns = [
+        r"^\s*(?:close|kill|quit|exit|stop|yop)\s+(?P<app>[\w\-\+\.\s]+?)\s*[!.\?]*\s*$",
+        r"^\s*(?P<app>[\w\-\+\.\s]+?)\s+(?:yop|o[''`]?chir|close\s*qil|yopib\s*ber)\s*[!.\?]*\s*$",
+    ]
+    args_schema = {
+        "type": "object",
+        "properties": {
+            "app": {"type": "string", "description": "App name, e.g. 'chrome', 'notepad'."},
+        },
+        "required": ["app"],
+    }
+
+    async def run(self, text: str, match: Any | None = None) -> dict[str, Any]:
+        if match is None:
+            return {"ok": False, "reply": "App nomini ayta olmadim."}
+        return await self.run_tool({"app": match.group("app").strip()})
+
+    async def run_tool(self, args: dict[str, Any]) -> dict[str, Any]:
+        app = (args.get("app") or "").strip().lower()
+        if not app:
+            return {"ok": False, "reply": "App nomi kerak."}
+        exe = CLOSE_ALIASES.get(app, app if app.endswith(".exe") else app + ".exe")
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["taskkill", "/F", "/IM", exe, "/T"],
+                capture_output=True, text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            if result.returncode == 0:
+                return {"ok": True, "reply": f"✅ {app} yopildi."}
+            # Try without .exe suffix variant
+            result2 = await asyncio.to_thread(
+                subprocess.run,
+                ["taskkill", "/F", "/IM", exe.replace(".exe", "").replace(".EXE", "") + ".exe", "/T"],
+                capture_output=True, text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            if result2.returncode == 0:
+                return {"ok": True, "reply": f"✅ {app} yopildi."}
+            return {"ok": False, "reply": f"'{app}' jarayoni topilmadi yoki allaqachon yopiq."}
+        except Exception as e:
+            return {"ok": False, "reply": f"Yopishda xato: {e}"}
+
+
+class InstallAppSkill(Skill):
+    name = "install_app"
+    description = "Download and install an application from the internet using winget or direct URL."
+    tool_description = (
+        "Install an application on the user's PC. Uses winget (Windows Package Manager) by default. "
+        "Can also download an .exe/.msi from a direct URL and run the installer silently. "
+        "Examples: 'install vlc', 'install 7zip', 'download and install from https://...'"
+    )
+    patterns = [
+        r"^\s*(?:install|yuklab\s*o[''`]?rnat|o[''`]?rnat)\s+(?P<app>[\w\-\+\.\s]+?)\s*[!.\?]*\s*$",
+        r"^\s*(?:download\s+and\s+install|yukla\s+va\s+o[''`]?rnat)\s+(?P<app>[\w\-\+\.\s]+?)\s*[!.\?]*\s*$",
+    ]
+    args_schema = {
+        "type": "object",
+        "properties": {
+            "app": {"type": "string", "description": "App name for winget, e.g. 'vlc', '7zip', 'notepad++'."},
+            "url": {"type": "string", "description": "Direct download URL for .exe/.msi installer (optional)."},
+            "silent": {"type": "boolean", "default": True, "description": "Install silently without UI prompts."},
+        },
+        "required": ["app"],
+    }
+
+    async def run(self, text: str, match: Any | None = None) -> dict[str, Any]:
+        if match is None:
+            return {"ok": False, "reply": "App nomini ayta olmadim."}
+        return await self.run_tool({"app": match.group("app").strip()})
+
+    async def run_tool(self, args: dict[str, Any]) -> dict[str, Any]:
+        app = (args.get("app") or "").strip()
+        url = (args.get("url") or "").strip()
+        silent = bool(args.get("silent", True))
+
+        if url:
+            return await self._install_from_url(url, app)
+        return await self._install_winget(app, silent)
+
+    async def _install_winget(self, app: str, silent: bool) -> dict[str, Any]:
+        # Check winget available
+        if not shutil.which("winget"):
+            return {"ok": False, "reply": "winget topilmadi. Windows 10 1709+ kerak."}
+        flags = ["winget", "install", "--accept-package-agreements",
+                 "--accept-source-agreements", app]
+        if silent:
+            flags += ["--silent"]
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run, flags,
+                capture_output=True, text=True, timeout=300,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            if result.returncode == 0:
+                return {"ok": True, "reply": f"✅ '{app}' muvaffaqiyatli o'rnatildi."}
+            out = (result.stdout + result.stderr)[:300]
+            return {"ok": False, "reply": f"winget xato (code {result.returncode}): {out}"}
+        except asyncio.TimeoutError:
+            return {"ok": False, "reply": "O'rnatish juda uzoq davom etdi (>5 daqiqa)."}
+        except Exception as e:
+            return {"ok": False, "reply": f"O'rnatishda xato: {e}"}
+
+    async def _install_from_url(self, url: str, name: str) -> dict[str, Any]:
+        import tempfile, httpx
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        suffix = Path(parsed.path).suffix or ".exe"
+        tmp = Path(tempfile.mktemp(suffix=suffix))
+        try:
+            async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                tmp.write_bytes(resp.content)
+        except Exception as e:
+            return {"ok": False, "reply": f"Yuklab olishda xato: {e}"}
+        try:
+            flags = [str(tmp)]
+            if suffix == ".msi":
+                flags = ["msiexec", "/i", str(tmp), "/quiet", "/norestart"]
+            else:
+                flags += ["/S", "/silent", "/quiet", "--silent"]
+            await asyncio.to_thread(
+                subprocess.run, flags,
+                capture_output=True, timeout=300,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            return {"ok": True, "reply": f"✅ '{name or tmp.name}' yuklab o'rnatildi."}
+        except Exception as e:
+            return {"ok": False, "reply": f"O'rnatishda xato: {e}"}
+        finally:
+            tmp.unlink(missing_ok=True)

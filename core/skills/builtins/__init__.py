@@ -13,7 +13,7 @@ from .files import (
     ZipSkill,
 )
 from .excel_query import ExcelQuerySkill
-from .open_app import OpenAppSkill
+from .open_app import CloseAppSkill, InstallAppSkill, OpenAppSkill
 from .ping import PingSkill
 from .screenshot import ScreenshotSkill
 from .system_info import SystemInfoSkill
@@ -25,6 +25,8 @@ def load_builtin_skills(registry, memory=None) -> None:
     for skill_cls in (
         PingSkill,
         OpenAppSkill,
+        CloseAppSkill,
+        InstallAppSkill,
         SystemInfoSkill,
         ScreenshotSkill,
         ExcelQuerySkill,
