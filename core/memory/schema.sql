@@ -1,0 +1,35 @@
+CREATE TABLE IF NOT EXISTS turns (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts          DATETIME DEFAULT CURRENT_TIMESTAMP,
+  role        TEXT NOT NULL,
+  text        TEXT NOT NULL,
+  source      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_turns_ts ON turns(ts);
+
+CREATE TABLE IF NOT EXISTS prefs (
+  key         TEXT PRIMARY KEY,
+  value       TEXT NOT NULL,
+  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS app_shortcuts (
+  alias       TEXT PRIMARY KEY,
+  apps        TEXT NOT NULL,
+  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS facts (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  category    TEXT,
+  content     TEXT NOT NULL,
+  ts          DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_facts_category ON facts(category);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  title       TEXT,
+  body        TEXT NOT NULL,
+  ts          DATETIME DEFAULT CURRENT_TIMESTAMP
+);

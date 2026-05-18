@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  color: #d6dbe4;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  user-select: none;
+}
+
+body {
+  background: radial-gradient(
+      1000px 700px at 30% 0%,
+      rgba(91, 141, 255, 0.18),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 600px at 90% 90%,
+      rgba(157, 107, 255, 0.16),
+      transparent 60%
+    ),
+    linear-gradient(180deg, #050810 0%, #03050b 100%);
+}
+
+/* The window is frameless; this strip is the draggable region */
+.titlebar {
+  -webkit-app-region: drag;
+  height: 32px;
+}
+.titlebar button {
+  -webkit-app-region: no-drag;
+}
+
+.glass {
+  background: linear-gradient(
+    180deg,
+    rgba(20, 28, 48, 0.55),
+    rgba(8, 12, 24, 0.45)
+  );
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(122, 252, 255, 0.08);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 30px 60px -30px rgba(0, 0, 0, 0.6);
+}
+
+.glow-text {
+  text-shadow: 0 0 12px rgba(122, 252, 255, 0.45);
+}
+
+::selection {
+  background: rgba(122, 252, 255, 0.25);
+}
+
+/* console scroll */
+.console-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.console-scroll::-webkit-scrollbar-thumb {
+  background: rgba(122, 252, 255, 0.18);
+  border-radius: 3px;
+}

@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(py --list)",
+      "PowerShell(python --version)",
+      "PowerShell(py -3.12 -m venv .venv)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pip install --upgrade pip)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pip install -r requirements.txt)",
+      "PowerShell(if \\(-not \\(Test-Path .env\\)\\) { Copy-Item .env.example .env }; Get-ChildItem .env)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe scripts\\\\smoke_test.py)",
+      "Bash(curl -s http://127.0.0.1:8765/health)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m core.api.main)",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s http://127.0.0.1:8765/skills)",
+      "Bash(curl -s -X POST http://127.0.0.1:8765/command -H \"Content-Type: application/json\" -d '{\"text\":\"hello\"}')",
+      "Bash(curl -s -X POST http://127.0.0.1:8765/command -H \"Content-Type: application/json\" -d '{\"text\":\"system status\"}')",
+      "Bash(curl -s -X POST http://127.0.0.1:8765/command -H \"Content-Type: application/json\" -d '{\"text\":\"open calculator\"}')",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pip install -r requirements-voice.txt)",
+      "Bash(tail -n 5 \"/c/Users/user/AppData/Local/Temp/claude/c--Users-user-Desktop-AI-assistant-project/2c8041c0-aa8a-42a6-8069-ffebf4753a7c/tasks/bmtvit7n5.output\" 2>/dev/null)",
+      "Read(//c/Users/user/AppData/Local/Temp/claude/c--Users-user-Desktop-AI-assistant-project/2c8041c0-aa8a-42a6-8069-ffebf4753a7c/tasks/**)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"from core.voice.tts import SapiTTS; t = SapiTTS\\(\\); t.speak\\('Nova voice subsystem online.'\\); print\\('TTS test OK'\\)\")",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pip install anthropic)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"from core.llm import LLMRouter; from core.llm.client import AnthropicClient; from core.llm.tools import build_tools; from core.llm.sentence_stream import SentenceBuffer; from core.llm.router import LLMRouter; print\\('all llm modules import OK'\\)\")",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"from core.llm.sentence_stream import SentenceBuffer; b=SentenceBuffer\\(\\); print\\(b.feed\\('Hello there. How are'\\)\\); print\\(b.feed\\(' you today? I am fine'\\)\\); print\\(b.finalize\\(\\)\\)\")",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pip install chromadb)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"import asyncio; from core.config import settings; from core.memory import MemoryService; m = MemoryService\\(settings\\); print\\('facts on fresh process:'\\); [print\\(' ',f\\) for f in m.structured.list_facts\\(\\)]; print\\('recent turns:'\\); [print\\(' ',t\\) for t in m.working.recent_turns\\(5\\)]; ctx = asyncio.run\\(m.assemble_context\\('coffee'\\)\\); print\\('semantic recall on \\\\\"coffee\\\\\":'\\); print\\(ctx['text']\\)\")",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -c \"from core.skills.builtins import load_builtin_skills; from core.skills import SkillRegistry; r=SkillRegistry\\(\\); load_builtin_skills\\(r\\); print\\('skills:', [s.name for s in r.all\\(\\)]\\)\")",
+      "PowerShell(node --version)",
+      "PowerShell(npm --version)"
+    ]
+  }
+}

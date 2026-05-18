@@ -1,0 +1,17 @@
+# Phase 2 voice pipeline dependencies.
+# Install on top of requirements.txt:  pip install -r requirements-voice.txt
+
+# Audio I/O
+sounddevice>=0.5
+numpy>=1.26
+
+# Speech-to-text (downloads ~75MB tiny.en model on first run)
+faster-whisper>=1.0
+
+# Text-to-speech (uses Windows SAPI under the hood — no extra downloads)
+pyttsx3>=2.98
+
+# Wake-word detector (optional — used only when --mode wake)
+# Comment out if you don't want the ~50MB ONNX runtime install.
+openwakeword>=0.6
+onnxruntime>=1.17
