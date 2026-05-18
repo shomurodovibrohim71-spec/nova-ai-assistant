@@ -83,6 +83,29 @@ def _render_table_image(df, title: str = "") -> Path:
     return tmp
 
 
+async def _send_document(file_path: Path, caption: str) -> dict[str, Any]:
+    import httpx
+    token = _token()
+    chat_id = _chat()
+    if not token or not chat_id:
+        return {"ok": False, "reply": "Telegram not configured."}
+    url = f"{TELEGRAM_API.format(token=token)}/sendDocument"
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            with file_path.open("rb") as fh:
+                resp = await client.post(
+                    url,
+                    data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+                    files={"document": (file_path.name, fh)},
+                )
+        data = resp.json()
+        if not data.get("ok"):
+            return {"ok": False, "reply": f"Telegram error: {data.get('description')}"}
+    except Exception as e:
+        return {"ok": False, "reply": f"Send failed: {e}"}
+    return {"ok": True}
+
+
 async def _send_photo(img_path: Path, caption: str) -> dict[str, Any]:
     import httpx
     token = _token()
@@ -206,6 +229,11 @@ class ExcelQuerySkill(Skill):
                 "type": "string",
                 "description": "Sheet name (optional, defaults to first sheet).",
             },
+            "send_file": {
+                "type": "boolean",
+                "description": "If true, also send filtered data as a .xlsx file. Default false (only image).",
+                "default": False,
+            },
         },
         "required": ["file", "filter_column", "filter_value"],
     }
@@ -218,6 +246,7 @@ class ExcelQuerySkill(Skill):
         filter_col = (args.get("filter_column") or "").strip()
         filter_val = (args.get("filter_value") or "").strip()
         sheet = (args.get("sheet") or "").strip() or None
+        send_file = bool(args.get("send_file", False))
 
         if not file_path or not filter_col or not filter_val:
             return {"ok": False, "reply": "Need: file path, filter_column, and filter_value."}
@@ -235,20 +264,28 @@ class ExcelQuerySkill(Skill):
 
         count = len(df) - 1 if "#" in df.columns else len(df)
         title = f"{filter_val.upper()} o'quvchilar — {count} ta  |  {Path(file_path).name}  [{sheet_name}]"
+        caption = f"📊 <b>{filter_val.upper()} status</b>: {count} ta o'quvchi\n📁 {Path(file_path).name}"
 
         img_path = await asyncio.to_thread(_render_table_image, df, title)
-
         try:
-            caption = f"📊 <b>{filter_val.upper()} status</b>: {count} ta o'quvchi\n📁 {Path(file_path).name}"
             result = await _send_photo(img_path, caption)
             if not result["ok"]:
                 return result
         finally:
             img_path.unlink(missing_ok=True)
 
-        return {
-            "ok": True,
-            "reply": f"✅ {filter_val.upper()} statusdagi {count} ta o'quvchi jadval rasmi yuborildi.",
-            "count": count,
-            "sheet": sheet_name,
-        }
+        if send_file:
+            import pandas as pd
+            xlsx_path = Path(tempfile.mktemp(suffix=f"_{filter_val.upper()}.xlsx"))
+            try:
+                await asyncio.to_thread(lambda: df.to_excel(str(xlsx_path), index=False))
+                file_caption = f"📎 <b>{filter_val.upper()} — filtrlangan fayl</b>\n{count} ta qator  |  {Path(file_path).name}"
+                file_result = await _send_document(xlsx_path, file_caption)
+                if not file_result["ok"]:
+                    return file_result
+            finally:
+                xlsx_path.unlink(missing_ok=True)
+
+        reply = f"✅ {filter_val.upper()} statusdagi {count} ta o'quvchi"
+        reply += " — rasm va fayl yuborildi." if send_file else " — jadval rasmi yuborildi."
+        return {"ok": True, "reply": reply, "count": count, "sheet": sheet_name}
