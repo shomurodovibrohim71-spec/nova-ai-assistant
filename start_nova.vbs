@@ -1,13 +1,13 @@
-Dim objShell, strDir, strCmd
+Dim objShell, strDir, strPS, strCmd
 
 strDir = "C:\Users\user\Desktop\AI assistant project"
+strPS  = strDir & "\nova_watchdog.ps1"
 
 Set objShell = CreateObject("WScript.Shell")
+objShell.CurrentDirectory = strDir
 
-' PowerShell bilan oynasiz ishga tushirish
-strCmd = "powershell.exe -WindowStyle Hidden -NoProfile -Command " & _
-         Chr(34) & "Set-Location '" & strDir & "'; " & _
-         "& '" & strDir & "\.venv\Scripts\python.exe' -m core.api.main" & Chr(34)
+' Launch watchdog via PowerShell, fully hidden — no window ever appears
+strCmd = "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File """ & strPS & """"
 
 objShell.Run strCmd, 0, False
 Set objShell = Nothing
