@@ -13,7 +13,11 @@ class WebSearchSkill(Skill):
     name = "web_search"
     description = "Search the web."
     tool_description = "Search the web (DuckDuckGo). Returns titles, snippets, and URLs."
-    patterns = [r"^\s*(?:search|google|look up)\s+(?:for\s+)?(?P<query>.+?)\s*[!.\?]*\s*$"]
+    patterns = [
+        r"^\s*(?:search|google|look up)\s+(?:for\s+)?(?P<query>.+?)\s*[!.\?]*\s*$",
+        r"^\s*(?:qidir|izla|topi?)\s+(?P<query>.+?)\s*[!.\?]*\s*$",
+        r"^\s*(?P<query>.+?)\s+(?:haqida\s+(?:qidir|izla)|ni\s+qidir)\s*[!.\?]*\s*$",
+    ]
     args_schema = {
         "type": "object",
         "properties": {

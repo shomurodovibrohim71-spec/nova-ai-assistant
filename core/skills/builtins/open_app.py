@@ -66,7 +66,11 @@ class OpenAppSkill(Skill):
         "Launch any application, game, or executable on the user's PC by name. "
         "Searches system PATH, common app aliases, and Desktop/Program Files folders."
     )
-    patterns = [r"^\s*(?:open|launch|start|run)\s+(?P<app>[\w\-\+\.\s]+?)\s*[!.\?]*\s*$"]
+    patterns = [
+        r"^\s*(?:open|launch|start|run)\s+(?P<app>[\w\-\+\.\s]+?)\s*[!.\?]*\s*$",
+        r"^\s*(?P<app>[\w\-\+\.\s]+?)\s+(?:och|ishga\s*tushir|yoq|start\s*qil|ochib\s*ber)\s*[!.\?]*\s*$",
+        r"^\s*(?:och|oching|yoq|yoqing)\s+(?P<app>[\w\-\+\.\s]+?)\s*[!.\?]*\s*$",
+    ]
     args_schema = {
         "type": "object",
         "properties": {

@@ -37,17 +37,8 @@ class SemanticMemory:
         col.add(ids=[str(turn_id)], documents=[text], metadatas=[metadata])
 
     def query(self, q: str, k: int = 5) -> list[dict[str, Any]]:
-        col = self._ensure()
-        if col.count() == 0:
-            return []
-        res = col.query(query_texts=[q], n_results=min(k, col.count()))
-        docs = (res.get("documents") or [[]])[0]
-        metas = (res.get("metadatas") or [[]])[0]
-        dists = (res.get("distances") or [[]])[0]
-        out: list[dict[str, Any]] = []
-        for doc, meta, dist in zip(docs, metas, dists):
-            out.append({"text": doc, "metadata": meta or {}, "distance": dist})
-        return out
+        # Disabled — ONNX embedding adds ~1-2s latency per request on CPU.
+        return []
 
     def count(self) -> int:
         return self._ensure().count()

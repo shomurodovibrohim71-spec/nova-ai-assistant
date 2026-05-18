@@ -129,7 +129,23 @@ async def _send_photo(img_path: Path, caption: str) -> dict[str, Any]:
     return {"ok": True}
 
 
-def _filter_excel(file_path: str, filter_col: str, filter_val: str, sheet: str | None = None) -> tuple[Any, str]:
+def _find_col(df, name: str) -> str | None:
+    """Case-insensitive partial column name match."""
+    name_l = name.lower()
+    for col in df.columns:
+        if name_l in col.lower():
+            return col
+    return None
+
+
+def _filter_excel(
+    file_path: str,
+    filter_col: str,
+    filter_val: str,
+    sheet: str | None = None,
+    filter_col2: str | None = None,
+    filter_val2: str | None = None,
+) -> tuple[Any, str]:
     """Read Excel file and filter rows. Returns (DataFrame, sheet_name)."""
     import pandas as pd
 
@@ -139,7 +155,6 @@ def _filter_excel(file_path: str, filter_col: str, filter_val: str, sheet: str |
 
     xl = pd.ExcelFile(path)
     sheet_name = sheet or xl.sheet_names[0]
-    # Try to find the requested sheet by partial name match
     if sheet:
         for s in xl.sheet_names:
             if sheet.lower() in s.lower():
@@ -148,32 +163,28 @@ def _filter_excel(file_path: str, filter_col: str, filter_val: str, sheet: str |
 
     df = xl.parse(sheet_name, header=None)
 
-    # Find header row — first row that has more than 3 non-null string values
+    # Find header row — first row with 3+ non-null values
     header_row = 0
     for i, row in df.iterrows():
-        non_null = row.dropna()
-        if len(non_null) >= 3:
+        if len(row.dropna()) >= 3:
             header_row = i
             break
 
     df = xl.parse(sheet_name, header=header_row)
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Find the column matching filter_col (partial, case-insensitive)
-    matched_col = None
-    for col in df.columns:
-        if filter_col.lower() in col.lower():
-            matched_col = col
-            break
-
+    # First filter
+    matched_col = _find_col(df, filter_col)
     if matched_col is None:
-        # Try searching all cell values in first few rows
-        raise ValueError(
-            f"Column '{filter_col}' not found. Available: {list(df.columns)[:10]}"
-        )
-
-    # Filter rows
+        raise ValueError(f"Column '{filter_col}' not found. Available: {list(df.columns)[:10]}")
     filtered = df[df[matched_col].astype(str).str.upper().str.strip() == filter_val.upper().strip()]
+
+    # Second filter (optional)
+    if filter_col2 and filter_val2:
+        matched_col2 = _find_col(filtered, filter_col2)
+        if matched_col2 is None:
+            raise ValueError(f"Column '{filter_col2}' not found. Available: {list(filtered.columns)[:10]}")
+        filtered = filtered[filtered[matched_col2].astype(str).str.upper().str.strip() == filter_val2.upper().strip()]
 
     # Pick the most useful columns to show
     keep_cols = []
@@ -200,16 +211,17 @@ def _filter_excel(file_path: str, filter_col: str, filter_val: str, sheet: str |
 
 class ExcelQuerySkill(Skill):
     name = "excel_query"
-    description = "Filter rows in an Excel file and send the result as a table image to Telegram."
+    description = "Filter rows in an Excel file and send the result as a table image or .xlsx file to Telegram."
     tool_description = (
-        "Open an Excel file, filter rows by a column value (e.g. payment status = 'UNP'), "
-        "and send a screenshot of the filtered table to Telegram."
+        "Open an Excel file, filter rows by one or two column values, and send results to Telegram.\n"
+        "Use filter_column2 + filter_value2 for AND filtering (e.g. STATUS=UNP AND GROUP=MWF).\n"
+        "Set send_file=true when user asks to send/save the filtered file (not just view it).\n"
+        "Examples:\n"
+        "  'UNP oquvchilarni ko'rsat' → filter_column='STATUS', filter_value='UNP'\n"
+        "  'MWF va UNP oquvchilarni faylini yubor' → filter_column='STATUS', filter_value='UNP', filter_column2='GROUP', filter_value2='MWF', send_file=true\n"
+        "  'filter qilib faylni saqlab yubor' → send_file=true"
     )
-    patterns = [
-        # Skip if user also says "screenshot" — that goes to the screenshot skill instead
-        r"^(?!.*screenshot).*(?P<file>[^\s]+\.xlsx?)\s+.*?(?P<col>status|holat|payment|paid|unpaid)\s*[=:]\s*(?P<val>\w+)",
-        r"^(?!.*screenshot).*(?P<val>UNP|PAID|unpaid|paid)\s+(?:status|holat).*?(?P<file>[^\s]+\.xlsx?)",
-    ]
+    patterns = []  # always routed through Claude LLM for flexible natural language parsing
     args_schema = {
         "type": "object",
         "properties": {
@@ -229,6 +241,14 @@ class ExcelQuerySkill(Skill):
                 "type": "string",
                 "description": "Sheet name (optional, defaults to first sheet).",
             },
+            "filter_column2": {
+                "type": "string",
+                "description": "Second column to filter on (optional, for AND filtering).",
+            },
+            "filter_value2": {
+                "type": "string",
+                "description": "Second filter value (optional, used with filter_column2).",
+            },
             "send_file": {
                 "type": "boolean",
                 "description": "If true, also send filtered data as a .xlsx file. Default false (only image).",
@@ -239,21 +259,56 @@ class ExcelQuerySkill(Skill):
     }
 
     async def run(self, text: str, match: Any | None = None) -> dict[str, Any]:
-        return {"ok": False, "reply": "Please use the tool form: specify file path, column, and value."}
+        import re as _re
+
+        # Extract .xlsx file path
+        file_m = _re.search(r'[\w\s\-]+\.xlsx?', text, _re.IGNORECASE)
+        if not file_m:
+            return {"ok": False, "reply": "Excel fayl yo'li topilmadi."}
+        file_path = file_m.group(0).strip()
+
+        # Extract key=value pairs like STATUS=UNP, GROUP=MWF
+        pairs = _re.findall(r'(\w+)\s*=\s*(\w+)', text, _re.IGNORECASE)
+
+        filter_col = filter_val = filter_col2 = filter_val2 = ""
+        for i, (col, val) in enumerate(pairs):
+            if i == 0:
+                filter_col, filter_val = col, val
+            elif i == 1:
+                filter_col2, filter_val2 = col, val
+
+        if not filter_col:
+            return {"ok": False, "reply": "Filter ustuni topilmadi (masalan STATUS=UNP)."}
+
+        send_file = bool(_re.search(
+            r'fayl\w*\s*(yubor|saql)|yubor\w*\s*fayl|send\s*file|filtered\s*file',
+            text, _re.IGNORECASE
+        ))
+
+        return await self.run_tool({
+            "file": file_path,
+            "filter_column": filter_col,
+            "filter_value": filter_val,
+            "filter_column2": filter_col2 or None,
+            "filter_value2": filter_val2 or None,
+            "send_file": send_file,
+        })
 
     async def run_tool(self, args: dict[str, Any]) -> dict[str, Any]:
-        file_path = (args.get("file") or "").strip()
-        filter_col = (args.get("filter_column") or "").strip()
-        filter_val = (args.get("filter_value") or "").strip()
-        sheet = (args.get("sheet") or "").strip() or None
-        send_file = bool(args.get("send_file", False))
+        file_path    = (args.get("file") or "").strip()
+        filter_col   = (args.get("filter_column") or "").strip()
+        filter_val   = (args.get("filter_value") or "").strip()
+        filter_col2  = (args.get("filter_column2") or "").strip() or None
+        filter_val2  = (args.get("filter_value2") or "").strip() or None
+        sheet        = (args.get("sheet") or "").strip() or None
+        send_file    = bool(args.get("send_file", False))
 
         if not file_path or not filter_col or not filter_val:
             return {"ok": False, "reply": "Need: file path, filter_column, and filter_value."}
 
         try:
             df, sheet_name = await asyncio.to_thread(
-                _filter_excel, file_path, filter_col, filter_val, sheet
+                _filter_excel, file_path, filter_col, filter_val, sheet, filter_col2, filter_val2
             )
         except FileNotFoundError as e:
             return {"ok": False, "reply": str(e)}
@@ -262,30 +317,43 @@ class ExcelQuerySkill(Skill):
         except Exception as e:
             return {"ok": False, "reply": f"Excel read error: {e}"}
 
-        count = len(df) - 1 if "#" in df.columns else len(df)
-        title = f"{filter_val.upper()} o'quvchilar — {count} ta  |  {Path(file_path).name}  [{sheet_name}]"
-        caption = f"📊 <b>{filter_val.upper()} status</b>: {count} ta o'quvchi\n📁 {Path(file_path).name}"
+        count      = len(df) - 1 if "#" in df.columns else len(df)
+        filter_tag = filter_val.upper()
+        if filter_col2 and filter_val2:
+            filter_tag += f" + {filter_val2.upper()}"
+        title   = f"{filter_tag} o'quvchilar — {count} ta  |  {Path(file_path).name}  [{sheet_name}]"
+        caption = f"📊 <b>{filter_tag}</b>: {count} ta o'quvchi\n📁 {Path(file_path).name}"
 
-        img_path = await asyncio.to_thread(_render_table_image, df, title)
-        try:
-            result = await _send_photo(img_path, caption)
-            if not result["ok"]:
-                return result
-        finally:
-            img_path.unlink(missing_ok=True)
-
-        if send_file:
-            import pandas as pd
-            xlsx_path = Path(tempfile.mktemp(suffix=f"_{filter_val.upper()}.xlsx"))
+        # ── 1. Rasm yuborish (faqat fayl so'ralmagan bo'lsa) ─────────────────
+        if not send_file:
+            img_path = await asyncio.to_thread(_render_table_image, df, title)
             try:
-                await asyncio.to_thread(lambda: df.to_excel(str(xlsx_path), index=False))
-                file_caption = f"📎 <b>{filter_val.upper()} — filtrlangan fayl</b>\n{count} ta qator  |  {Path(file_path).name}"
-                file_result = await _send_document(xlsx_path, file_caption)
-                if not file_result["ok"]:
-                    return file_result
+                img_result = await _send_photo(img_path, caption)
             finally:
-                xlsx_path.unlink(missing_ok=True)
+                img_path.unlink(missing_ok=True)
+            if not img_result.get("ok"):
+                return img_result
+            return {"ok": True, "reply": f"✅ {filter_tag} — {count} ta o'quvchi — jadval rasmi yuborildi.", "count": count, "sheet": sheet_name}
 
-        reply = f"✅ {filter_val.upper()} statusdagi {count} ta o'quvchi"
-        reply += " — rasm va fayl yuborildi." if send_file else " — jadval rasmi yuborildi."
-        return {"ok": True, "reply": reply, "count": count, "sheet": sheet_name}
+        # ── 2. Filtrlangan Excel fayl yuborish ────────────────────────────────
+        stem = Path(file_path).stem
+        xlsx_name = f"{filter_tag.replace(' ', '_')}_{stem}.xlsx"
+        xlsx_path = Path(tempfile.mktemp(suffix=f"_{xlsx_name}"))
+        try:
+            def _write_xlsx():
+                df.to_excel(str(xlsx_path), index=False, engine="openpyxl")
+
+            await asyncio.to_thread(_write_xlsx)
+            file_caption = (
+                f"📎 <b>{filter_tag} — filtrlangan fayl</b>\n"
+                f"{count} ta qator  |  {Path(file_path).name}"
+            )
+            file_result = await _send_document(xlsx_path, file_caption)
+            if not file_result.get("ok"):
+                return file_result
+        except Exception as e:
+            return {"ok": False, "reply": f"Fayl yaratishda xato: {e}"}
+        finally:
+            xlsx_path.unlink(missing_ok=True)
+
+        return {"ok": True, "reply": f"✅ {filter_tag} — {count} ta o'quvchi filtrlangan fayl yuborildi.", "count": count, "sheet": sheet_name}

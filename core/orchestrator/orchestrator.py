@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -50,7 +51,7 @@ class Orchestrator:
             except Exception as e:
                 log.exception("skill %s failed", skill.name)
                 reply = {"ok": False, "reply": f"Skill '{skill.name}' errored: {e}"}
-            await self._record_turn(text_norm, reply.get("reply", ""), source)
+            asyncio.ensure_future(self._record_turn(text_norm, reply.get("reply", ""), source))
             await self.bus.publish(Event("assistant.reply", {"reply": reply}))
             return reply
 

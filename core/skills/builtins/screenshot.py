@@ -655,20 +655,20 @@ def _filter_all_rows(
     return pages
 
 
-async def _send_photo(img_path: Path, caption: str) -> dict[str, Any]:
+async def _send_document(img_path: Path, caption: str) -> dict[str, Any]:
     import httpx
     token = settings.telegram_bot_token
     chat_id = settings.telegram_chat_id
     if not token or not chat_id:
         return {"ok": False, "reply": "Telegram not configured."}
-    url = f"{TELEGRAM_API.format(token=token)}/sendPhoto"
+    url = f"{TELEGRAM_API.format(token=token)}/sendDocument"
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             with img_path.open("rb") as fh:
                 resp = await client.post(
                     url,
                     data={"chat_id": chat_id, "caption": caption},
-                    files={"photo": ("screenshot.png", fh, "image/png")},
+                    files={"document": (img_path.name, fh, "image/png")},
                 )
         data = resp.json()
         if not data.get("ok"):
@@ -716,6 +716,8 @@ class ScreenshotSkill(Skill):
         r"^\s*screenshot\s*(?:monitor\s*(?P<mon>\d+))?\s*[!.\?]*\s*$",
         r"^\s*(?:take\s+(?:a\s+)?|send\s+(?:a\s+)?)screenshot\s*[!.\?]*\s*$",
         r"^\s*ekran\s*(?:rasm[iga]*|surati?)\s*(?:ol|yubor)?\s*[!.\?]*\s*$",
+        r"^\s*screenshot\s+(?:ol|yubor|jo[''`]?nat)\s*[!.\?]*\s*$",
+        r"^\s*(?:ekran|screen)\s*(?:ol|sur[''`]?at|rasm)\s*[!.\?]*\s*$",
     ]
     args_schema = {
         "type": "object",
@@ -792,7 +794,7 @@ class ScreenshotSkill(Skill):
                     img_path = await asyncio.to_thread(_capture_folder_window, target)
                 except Exception as e:
                     return {"ok": False, "reply": f"Papka oynasi suratga olinmadi: {e}"}
-                result = await _send_photo(img_path, f"📁 {target.name}")
+                result = await _send_document(img_path, f"📁 {target.name}")
                 if not result["ok"]:
                     return result
                 return {"ok": True, "reply": f"📁 {target.name} papkasi yuborildi."}
@@ -829,7 +831,7 @@ class ScreenshotSkill(Skill):
                     label += f" + {filter_val2.upper()}"
                 for i, img_path in enumerate(pages):
                     caption = f"📊 {label} — {i+1}/{total_pages}  |  {target.name}"
-                    res = await _send_photo(img_path, caption)
+                    res = await _send_document(img_path, caption)
                     if res.get("ok"):
                         sent += 1
                 if sent == 0:
@@ -847,7 +849,7 @@ class ScreenshotSkill(Skill):
                 )
             except Exception as e:
                 return {"ok": False, "reply": f"Fayl oynasi suratga olinmadi: {e}"}
-            result = await _send_photo(img_path, f"📄 {target.name}")
+            result = await _send_document(img_path, f"📄 {target.name}")
             if not result["ok"]:
                 return result
             return {"ok": True, "reply": f"📄 {target.name} yuborildi."}
@@ -858,7 +860,7 @@ class ScreenshotSkill(Skill):
             img_path = await asyncio.to_thread(_take_screenshot, monitor)
         except Exception as e:
             return {"ok": False, "reply": f"Screenshot failed: {e}"}
-        result = await _send_photo(img_path, "📸 Screenshot")
+        result = await _send_document(img_path, "📸 Screenshot")
         if not result["ok"]:
             return result
         return {"ok": True, "reply": "Screenshot yuborildi."}

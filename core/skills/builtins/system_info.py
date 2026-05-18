@@ -39,10 +39,13 @@ class SystemInfoSkill(Skill):
         r"\b(system|pc|computer)\s+(status|info|health)\b",
         r"\b(cpu|memory|ram)\s+(usage|status)\b",
         r"\bhow('?s| is)\s+(my\s+)?(system|pc|computer)\b",
-        # disk-specific
         r"\b(disk|drive|c:|d:|storage)\s*(space|info|status|bosh|joy)?\b",
         r"\b(qancha|necha)\s+(bosh|bo[''s]+)\s+(joy|disk|xotira)\b",
         r"\bhow\s+much\s+(free\s+)?(space|disk)\b",
+        # Uzbek
+        r"^\s*tizim\s*(holati?|ma[''`]?lumot|info)?\s*[!.\?]*\s*$",
+        r"^\s*kompyuter\s*(holati?|ma[''`]?lumot)?\s*[!.\?]*\s*$",
+        r"\b(ram|cpu|disk|xotira|protsessor)\s*(qancha|necha|holat|band)?\b",
     ]
     args_schema = {
         "type": "object",

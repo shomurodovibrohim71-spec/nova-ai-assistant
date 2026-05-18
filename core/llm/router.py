@@ -12,6 +12,7 @@ Public entry point: `LLMRouter.respond(text)` is an async generator yielding:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections.abc import AsyncIterator
@@ -29,7 +30,7 @@ from .tools import build_tools, execute_tool
 log = logging.getLogger(__name__)
 
 MAX_TOOL_ITERATIONS = 5
-HISTORY_TURNS = 12
+HISTORY_TURNS = 6
 
 
 class LLMRouter:
@@ -116,10 +117,27 @@ class LLMRouter:
                             yield out
                     final = await stream.get_final_message()
             except Exception as e:
-                msg = self._friendly_error(e)
                 log.warning("LLM stream failed: %s", e)
-                yield {"type": "error", "message": msg}
-                return
+                # history buzilgan bo'lishi mumkin — tozalab qayta urinib ko'r
+                self._history = []
+                try:
+                    async with client.messages.stream(
+                        model=chosen_model,
+                        max_tokens=settings.max_tokens,
+                        system=system_blocks,
+                        tools=tools,
+                        messages=[{"role": "user", "content": user_text}],
+                    ) as stream:
+                        async for event in stream:
+                            async for out in self._handle_stream_event(
+                                event, sentence_buf, full_text_parts
+                            ):
+                                yield out
+                        final = await stream.get_final_message()
+                except Exception as e2:
+                    log.warning("LLM retry also failed: %s", e2)
+                    yield {"type": "error", "message": self._friendly_error(e2)}
+                    return
 
             stop_reason = final.stop_reason
             try:
@@ -187,16 +205,12 @@ class LLMRouter:
 
         full_reply = "".join(full_text_parts).strip()
 
-        # --- Memory write-back ---
+        # --- Memory write-back (fire-and-forget — don't block the response) ---
         if self.memory is not None and full_reply:
-            try:
-                ids = await self.memory.write_turn(user_text, full_reply, source="llm")
-                yield {"type": "memory_written", "kind": "turn", "ids": ids}
-                await self.bus.publish(Event("memory.written", {"kind": "turn", "ids": ids}))
-            except Exception:
-                log.exception("memory write failed (continuing)")
+            asyncio.ensure_future(self._write_turn_bg(user_text, full_reply))
 
         yield {"type": "final", "text": full_reply, "model": chosen_model, "usage": usage}
+        self._strip_tool_messages()
         self._trim_history()
 
     # ---------- helpers ----------
@@ -259,6 +273,22 @@ class LLMRouter:
             return "I can't reach Anthropic — check your internet connection."
         return "I can't reach my brain right now."
 
+    def _strip_tool_messages(self) -> None:
+        """After each turn remove tool_use/tool_result messages from history.
+        Keeps only plain user text and assistant text blocks.
+        This prevents history format errors on the next call."""
+        cleaned = []
+        for msg in self._history:
+            role = msg.get("role")
+            content = msg.get("content")
+            if role == "user" and isinstance(content, str):
+                cleaned.append(msg)
+            elif role == "assistant" and isinstance(content, list):
+                text_blocks = [b for b in content if isinstance(b, dict) and b.get("type") == "text"]
+                if text_blocks:
+                    cleaned.append({"role": "assistant", "content": text_blocks})
+        self._history = cleaned
+
     def _sanitize_history(self) -> None:
         """Remove orphaned tool_use blocks that would cause a 400 from Anthropic."""
         if not _has_orphaned_tool_use(self._history):
@@ -275,6 +305,13 @@ class LLMRouter:
         while cut < len(msgs) and msgs[cut]["role"] != "user":
             cut += 1
         self._history = msgs[cut:]
+
+    async def _write_turn_bg(self, user_text: str, reply: str) -> None:
+        try:
+            ids = await self.memory.write_turn(user_text, reply, source="llm")
+            await self.bus.publish(Event("memory.written", {"kind": "turn", "ids": ids}))
+        except Exception:
+            log.exception("memory write failed")
 
 
 def _has_orphaned_tool_use(messages: list[dict]) -> bool:
