@@ -128,12 +128,13 @@ app = build_app()
 
 
 def run() -> None:
+    # Pass the app object directly (not string) to avoid re-importing the
+    # module and running build_app() a second time (double skill init).
     uvicorn.run(
-        "core.api.main:app",
+        app,
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level.lower(),
-        reload=False,
     )
 
 

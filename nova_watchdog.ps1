@@ -21,12 +21,43 @@ function Nova-Running {
     } catch { return $false }
 }
 
-function Start-Nova {
-    # Kill any stale python processes first
+function Kill-Port8765 {
+    # Kill whatever process is holding port 8765 (no admin/CommandLine needed)
+    try {
+        $conn = Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue
+        if ($conn) {
+            foreach ($c in $conn) {
+                Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+            }
+            Start-Sleep -Seconds 2
+        }
+    } catch {}
+    # Also try killing all python.exe as fallback
     Get-Process -Name "python" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like "*core.api.main*" } |
         Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
+    Start-Sleep -Seconds 2
+}
+
+function Port-Free {
+    $conn = Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue
+    return ($null -eq $conn)
+}
+
+function Start-Nova {
+    Kill-Port8765
+
+    # Wait until port is actually free (up to 10s)
+    $waited = 0
+    while (-not (Port-Free) -and $waited -lt 10) {
+        Start-Sleep -Seconds 1
+        $waited++
+    }
+    if (-not (Port-Free)) {
+        Write-Log "WARNING: port 8765 still busy after ${waited}s - forcing kill"
+        Get-Process -Name "python" -ErrorAction SilentlyContinue |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+    }
 
     $proc = Start-Process `
         -FilePath $python `
@@ -42,10 +73,10 @@ Write-Log "Watchdog started"
 
 # Initial launch
 $nova = Start-Nova
-Start-Sleep -Seconds 15   # wait for first startup
+Start-Sleep -Seconds 18   # wait for first startup
 
 $checkInterval = 30       # seconds between health checks
-$restartDelay  = 12       # seconds to wait after restart before checking
+$restartDelay  = 15       # seconds to wait after restart before checking
 
 while ($true) {
     Start-Sleep -Seconds $checkInterval
